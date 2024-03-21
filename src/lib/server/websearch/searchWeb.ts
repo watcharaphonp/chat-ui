@@ -7,11 +7,19 @@ import {
 	USE_LOCAL_WEBSEARCH,
 	SEARXNG_QUERY_URL,
 	YDC_API_KEY,
+	ENABLE_DUCKDUCKGO_API,
 } from "$env/static/private";
 import { getJson } from "serpapi";
 import type { GoogleParameters } from "serpapi";
 import { searchWebLocal } from "./searchWebLocal";
 import { searchSearxng } from "./searchSearxng";
+
+interface DuckDuckGoSearchResult {
+	title: string;
+	link: string;
+	text: string;
+	hostname: string;
+}
 
 // get which SERP api is providing web results
 export function getWebSearchProvider() {
@@ -44,6 +52,10 @@ export async function searchWeb(query: string) {
 	if (SERPSTACK_API_KEY) {
 		return await searchSerpStack(query);
 	}
+	if (ENABLE_DUCKDUCKGO_API) {
+		return await searchWebDuckDuckGo(query);
+	}
+
 	throw new Error("No You.com or Serper.dev or SerpAPI key found");
 }
 
@@ -152,4 +164,30 @@ export async function searchSerpStack(query: string) {
 	return {
 		organic_results: resultsWithSnippets ?? [],
 	};
+}
+
+export async function searchWebDuckDuckGo(query: string) {
+	const apiUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json`;
+	try {
+		const response = await fetch(apiUrl);
+		if (!response.ok) {
+			throw new Error(`DuckDuckGo API returned error: ${response.statusText}`);
+		}
+		const responseData = await response.json();
+		const formattedResults: DuckDuckGoSearchResult[] =
+			responseData.Results?.map((result: any) => ({
+				title: result.Title,
+				link: result.FirstURL,
+				text: result.AbstractText || "",
+				hostname: new URL(result.FirstURL).hostname,
+			})) ?? [];
+		return {
+			organic_results: formattedResults,
+		};
+	} catch (error) {
+		console.error("Error fetching data:", error);
+		return {
+			organic_results: [],
+		};
+	}
 }
